@@ -1,0 +1,40 @@
+{
+	"name": "Python 3",
+	"build": {
+		"dockerfile": "Dockerfile",
+		"context": "..",
+		"args": {
+			"VARIANT": "3.11"
+		}
+	},
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"python.defaultInterpreterPath": "/home/vscode/venv/bin/python"
+			},
+			"extensions": [
+				"ms-toolsai.jupyter",
+				"ms-python.python",
+				"GitHub.copilot",
+				"ms-vscode-remote.remote-ssh"
+			]
+		}
+	},
+	"appPort": [
+		"8501:8501"
+	],
+	"runArgs": [
+		"--init",
+		"--cap-add=SYS_PTRACE",
+		"--security-opt",
+		"seccomp=unconfined"
+	],
+	"postCreateCommand": "python -m venv /home/vscode/venv && /home/vscode/venv/bin/pip install -r requirements.txt",
+	"remoteUser": "vscode",
+	"portsAttributes": {
+		"8501": {
+			"label": "Streamlit App",
+			"onAutoForward": "notify"
+		}
+	}
+}
