@@ -2,3 +2,7 @@ numpy
 pandas
 streamlit
 openai
+requests
+python-dotenv
+azure-storage-blob 
+azure-identity

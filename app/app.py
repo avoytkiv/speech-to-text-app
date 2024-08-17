@@ -1,42 +1,17 @@
 import streamlit as st
-import openai
-from openai import OpenAI
-import os
-from datetime import datetime
-
-# Set the directory where audio files will be saved
-UPLOAD_DIR = "uploaded_audios"
-if not os.path.exists(UPLOAD_DIR):
-    os.makedirs(UPLOAD_DIR)
-
-def save_uploaded_file(uploaded_file):
-    # Create a unique filename using the current time
-    current_time = datetime.now().strftime("%Y%m%d%H%M%S")
-    filename = f"{current_time}_{uploaded_file.name}"
-    filepath = os.path.join(UPLOAD_DIR, filename)
-    
-    # Save the file to the specified directory
-    with open(filepath, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    
-    return filepath
-
-def transcribe_audio_with_openai(file_path):
-    # Open the audio file
-    with open(file_path, "rb") as audio_file:
-        client = OpenAI()
-        # Transcribe the audio using OpenAI's updated API
-        transcription = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            response_format="text"
-        )
-    # Correctly accessing the transcription text from the dictionary
-    return transcription
-
+from file_utils import save_uploaded_file
+from openai_utils import transcribe_audio_with_openai
+from azure_utils import create_container, upload_file_to_blob, transcribe_audio_with_azure
+import uuid
 
 # Streamlit UI
-st.title("Audio Upload and Transcription with OpenAI Whisper")
+st.title("Audio Upload and Transcription Service")
+
+# Option to select the transcription service
+service_option = st.radio(
+    "Choose transcription service:",
+    ("OpenAI Whisper", "Azure Speech Service")
+)
 
 # Create a file uploader that accepts audio files
 uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3", "mp4", "m4a", "webm"])
@@ -49,9 +24,16 @@ if uploaded_file is not None:
     st.success(f"File saved at {file_path}")
     st.audio(file_path)  # Optionally, play the audio file within the app
     
-    # Transcribe the audio file using OpenAI's updated API
-    with st.spinner('Transcribing...'):
-        transcription = transcribe_audio_with_openai(file_path)
+    if service_option == "OpenAI Whisper":
+        with st.spinner('Transcribing with OpenAI Whisper...'):
+            transcription = transcribe_audio_with_openai(file_path)
+    elif service_option == "Azure Speech Service":
+        with st.spinner('Uploading to Azure Blob Storage...'):
+            container_name=str(uuid.uuid4())
+            container_client = create_container(container_name)
+            blob_url = upload_file_to_blob(container_name, file_path)
+        with st.spinner('Transcribing with Azure Speech Service...'):
+            transcription = transcribe_audio_with_azure(blob_url)
     
     # Display the transcription
     st.write("**Transcription:**")
