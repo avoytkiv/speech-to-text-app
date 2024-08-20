@@ -8,6 +8,8 @@ import requests
 from dotenv import load_dotenv
 import logging
 import sys
+import json
+from datetime import datetime
 
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
         format="%(asctime)s %(message)s", datefmt="%m/%d/%Y %I:%M:%S %p %Z")
@@ -56,6 +58,7 @@ def transcribe_audio_with_azure(blob_url):
         speakers={'minCount': 1, 'maxCount': 3}
     )
     properties = TranscriptionProperties(
+        # destination_container_url="https://your_storage_account.blob.core.windows.net/your_container_name",
         word_level_timestamps_enabled=False,
         display_form_word_level_timestamps_enabled=False,
         diarization_enabled=True,
@@ -90,6 +93,77 @@ def transcribe_audio_with_azure(blob_url):
                 if file_data.kind == "Transcription":
                     results_url = file_data.links.content_url
                     results = requests.get(results_url)
-                    return results.content.decode('utf-8')
+                    transcription_json = download_transcription(results_url)
+                    plain_text, speaker_info = extract_plain_text_and_speakers(transcription_json)
+                    save_transcription(plain_text, speaker_info, file_data.name)
+                    return plain_text, speaker_info
         elif transcription.status == "Failed":
             return f"Transcription failed: {transcription.properties.error.message}"
+
+def download_transcription(results_url):
+    """
+    Downloads the transcription JSON file from the provided URL.
+    """
+    response = requests.get(results_url)
+    response.raise_for_status()
+    return response.json()
+
+def extract_plain_text_and_speakers(transcription_json):
+    """
+    Extracts plain text and speaker information from the transcription JSON response.
+    Combines consecutive phrases by the same speaker into single entries.
+    """
+    combined_phrases = transcription_json.get("combinedRecognizedPhrases", [])
+    recognized_phrases = transcription_json.get("recognizedPhrases", [])
+    
+    # Extract plain text
+    plain_text = combined_phrases[0].get("display", "") if combined_phrases else "No transcription text found."
+    
+    # Extract and combine speaker information
+    speaker_info = []
+    last_speaker = None
+    last_text = None
+
+    for phrase in recognized_phrases:
+        speaker_id = phrase.get("speaker", "Unknown")
+        display_text = phrase["nBest"][0].get("display", "")
+
+        if speaker_id == last_speaker:
+            # Combine with the last entry if the speaker is the same
+            last_text += f" {display_text}"
+        else:
+            if last_speaker is not None:
+                speaker_info.append(f"Speaker {last_speaker}: {last_text}")
+            last_speaker = speaker_id
+            last_text = display_text
+    
+    # Append the last speaker's text
+    if last_speaker is not None:
+        speaker_info.append(f"Speaker {last_speaker}: {last_text}")
+    
+    return plain_text, speaker_info
+
+
+def save_transcription(plain_text, speaker_info, file_name):
+    """
+    Saves the transcription text and speaker information to a local file with a timestamp.
+    """
+    # Get the current timestamp in a readable format
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+    # Create the file name with the timestamp
+    file_path = os.path.join("transcriptions", f"{file_name}_{timestamp}.txt")
+    
+    # Ensure the directory exists
+    if not os.path.exists("transcriptions"):
+        os.makedirs("transcriptions")
+
+    # Write the transcription and speaker information to the file
+    with open(file_path, "w") as f:
+        f.write("Transcription Text:\n")
+        f.write(plain_text + "\n\n")
+        f.write("Speaker Information:\n")
+        for info in speaker_info:
+            f.write(info + "\n")
+
+    print(f"Transcription saved to {file_path}")
