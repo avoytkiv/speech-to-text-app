@@ -29,7 +29,8 @@ def split_audio_file(file_path, max_file_size=MAX_FILE_SIZE):
     logging.info(f"File size ({file_size} bytes) exceeds the maximum limit of {max_file_size} bytes. Splitting the file...")
 
     # Load the audio file using pydub
-    audio = AudioSegment.from_file(file_path, format="m4a")
+    file_extension = os.path.splitext(file_path)[1][1:]
+    audio = AudioSegment.from_file(file_path, format=file_extension)
     file_duration = len(audio)  # Duration in milliseconds
 
     # Calculate the number of chunks needed
