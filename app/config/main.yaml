@@ -1,1 +1,26 @@
 base_path: /workspaces/speech-to-text-app
+
+pathes:
+  dotenv: ${.base_path}/.env
+  uploaded_audios: ${.base_path}/uploaded_audios
+
+azure_storage:
+  account_url: 'https://speechtotextblobstorage.blob.core.windows.net'
+
+transcription:
+  model_reference: '6df6b743-91a3-4e6f-87fe-680191947ee2'
+  speakers:
+    minCount: 1
+    maxCount: 3
+  word_level_timestamps_enabled: False
+  display_form_word_level_timestamps_enabled: False
+  diarization_enabled: True
+  punctuation_mode: 'DictatedAndAutomatic'
+  profanity_filter_mode: 'Masked'
+  locale: 'uk-UA'
+
+process_audio:
+  max_file_size: 5
+
+postprocess_transcription:
+  prompt: 'Please, provide a name for the transcription'
