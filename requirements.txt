@@ -4,5 +4,9 @@ streamlit
 openai
 requests
 python-dotenv
+hydra-core
+hydra_colorlog
+pydub
+# Azure
 azure-storage-blob 
 azure-identity
