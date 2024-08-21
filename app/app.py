@@ -1,7 +1,7 @@
 import streamlit as st
 from file_utils import save_uploaded_file
 from openai_utils import transcribe_audio_with_openai
-from azure_utils import create_container, upload_file_to_blob, transcribe_audio_with_azure
+from azure_utils import process_audio_file
 import uuid
 
 # Streamlit UI
@@ -28,12 +28,8 @@ if uploaded_file is not None:
         with st.spinner('Transcribing with OpenAI Whisper...'):
             transcription = transcribe_audio_with_openai(file_path)
     elif service_option == "Azure Speech Service":
-        with st.spinner('Uploading to Azure Blob Storage...'):
-            container_name=str(uuid.uuid4())
-            container_client = create_container(container_name)
-            blob_url = upload_file_to_blob(container_name, file_path)
-        with st.spinner('Transcribing with Azure Speech Service...'):
-            transcription = transcribe_audio_with_azure(blob_url)
+        with st.spinner('Processing with Azure Speech Service...'):
+            transcription, speaker_info = process_audio_file(file_path)
     
     # Display the transcription
     st.write("**Transcription:**")

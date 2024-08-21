@@ -9,6 +9,7 @@ from azure.storage.blob import BlobServiceClient
 from dotenv import load_dotenv
 import swagger_client
 from swagger_client.models import DiarizationProperties, TranscriptionProperties
+from audio_utils import split_audio_file  
 
 # Set up logging
 logging.basicConfig(stream=sys.stdout, level=logging.DEBUG,
@@ -19,7 +20,6 @@ dotenv_path = '/workspaces/speech-to-text-app/.env'
 load_dotenv(dotenv_path)
 
 MODEL_REFERENCE = '6df6b743-91a3-4e6f-87fe-680191947ee2'
-AZURE_STORAGE_CONNECTION_STRING = os.environ.get("AZURE_STORAGE_CONNECTION_STRING")
 SUBSCRIPTION_KEY = os.environ.get("SUBSCRIPTION_KEY") 
 SERVICE_REGION = os.environ.get("SERVICE_REGION")
 
@@ -38,12 +38,13 @@ def upload_file_to_blob(container_name, file_path):
     blob_client = blob_service_client.get_blob_client(container=container_name, blob=os.path.basename(file_path))
     with open(file_path, "rb") as data:
         blob_client.upload_blob(data)
-    sas_url = blob_client.url
-    logging.info(f"File uploaded successfully, SAS URL: {sas_url}")
-    return sas_url
+    blob_url = blob_client.url
+    logging.info(f"File uploaded successfully, Blob URL: {blob_url}")
+    return blob_url
 
-def transcribe_audio_with_azure(blob_url):
-    logging.info(f"Starting transcription for audio from: {blob_url}")
+def transcribe_audio_with_azure_urls(blob_urls):
+    logging.info(f"Starting transcription for audio from provided URLs.")
+
     configuration = swagger_client.Configuration()
     configuration.api_key["Ocp-Apim-Subscription-Key"] = SUBSCRIPTION_KEY
     configuration.host = f"https://{SERVICE_REGION}.api.cognitive.microsoft.com/speechtotext/v3.2"
@@ -69,12 +70,13 @@ def transcribe_audio_with_azure(blob_url):
         punctuation_mode="DictatedAndAutomatic",
         profanity_filter_mode="Masked"
     )
+
     transcription_definition = swagger_client.Transcription(
-        display_name="Transcription",
-        description="Azure Speech Service Transcription",
+        display_name="URLs Transcription",
+        description="Azure Speech Service Transcription for provided URLs",
         locale="uk-UA",
         model=model,
-        content_urls=[blob_url],
+        content_urls=blob_urls,
         properties=properties
     )
 
@@ -94,16 +96,21 @@ def transcribe_audio_with_azure(blob_url):
         if transcription.status == "Succeeded":
             pag_files = api.transcriptions_list_files(transcription_id)
             logging.debug(f"Files associated with transcription: {pag_files}")
+            all_plain_text = []
+            all_speaker_info = []
+            # Process each file's results as needed
             for file_data in pag_files.values:
                 if file_data.kind == "Transcription":
                     results_url = file_data.links.content_url
                     transcription_json = download_transcription(results_url)
                     plain_text, speaker_info = extract_plain_text_and_speakers(transcription_json)
+                    all_plain_text.append(plain_text)
+                    all_speaker_info.extend(speaker_info)
                     save_transcription(plain_text, speaker_info, file_data.name)
-                    return plain_text, speaker_info
-        elif transcription.status == "Failed":
-            logging.error(f"Transcription failed: {transcription.properties.error.message}")
-            return f"Transcription failed: {transcription.properties.error.message}"
+            return "\n\n".join(all_plain_text), all_speaker_info
+
+    logging.error(f"Transcription failed: {transcription.properties.error.message}")
+    return "Transcription failed", []
 
 def download_transcription(results_url):
     logging.info(f"Downloading transcription from URL: {results_url}")
@@ -158,3 +165,19 @@ def save_transcription(plain_text, speaker_info, file_name):
             f.write(info + "\n")
 
     logging.info(f"Transcription saved to {file_path}")
+
+def process_audio_file(file_path):
+    # Step 1: Split the audio file into smaller chunks
+    chunk_paths = split_audio_file(file_path, max_file_size=5 * 1024 * 1024) 
+
+    # Step 2: Create a container in Azure Blob Storage
+    container_name = f"audio-chunks-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+    create_container(container_name)
+
+    # Step 3: Upload each chunk to the container and gather their URLs
+    blob_urls = [upload_file_to_blob(container_name, chunk_path) for chunk_path in chunk_paths]
+
+    # Step 4: Transcribe all chunks using their URLs
+    combined_text, speaker_info = transcribe_audio_with_azure_urls(blob_urls)
+
+    return combined_text, speaker_info
